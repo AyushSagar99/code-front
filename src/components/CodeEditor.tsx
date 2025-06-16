@@ -14,9 +14,24 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ problem, onSubmissionCreated })
   const [language, setLanguage] = useState<Language>('javascript');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isEditorReady, setIsEditorReady] = useState<boolean>(false);
+  const [submissionResult, setSubmissionResult] = useState<any>(null);
+  const [showResult, setShowResult] = useState<boolean>(false);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
-  // Add null check for problem
+  const languageTemplates: Record<Language, string> = {
+    javascript: '',
+    python: '',
+    java: '',
+    cpp: '',
+    c: ''
+  };
+
+  // 🔥 ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURNS
+  useEffect(() => {
+    setCode(languageTemplates[language]);
+  }, [language]);
+
+  // ✅ NOW it's safe to do early returns AFTER all hooks
   if (!problem) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -31,79 +46,6 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ problem, onSubmissionCreated })
       </div>
     );
   }
-
-  const languageTemplates: Record<Language, string> = {
-    javascript: `function solve(input) {
-    // Your solution here
-    // Input is provided as a string
-    // Return your result
-    
-    return result;
-}
-
-// Example usage:
-// console.log(solve("2,7,11,15\\n9"));`,
-    python: `def solve(input_str):
-    # Your solution here
-    # Input is provided as a string
-    # Return your result
-    
-    return result
-
-# Example usage:
-# print(solve("2,7,11,15\\n9"))`,
-    java: `public class Solution {
-    public static String solve(String input) {
-        // Your solution here
-        // Input is provided as a string
-        // Return your result as string
-        
-        return result;
-    }
-    
-    public static void main(String[] args) {
-        // Example usage:
-        // System.out.println(solve("2,7,11,15\\n9"));
-    }
-}`,
-    cpp: `#include <iostream>
-#include <string>
-using namespace std;
-
-string solve(string input) {
-    // Your solution here
-    // Input is provided as a string
-    // Return your result as string
-    
-    return result;
-}
-
-int main() {
-    // Example usage:
-    // cout << solve("2,7,11,15\\n9") << endl;
-    return 0;
-}`,
-    c: `#include <stdio.h>
-#include <string.h>
-
-char* solve(char* input) {
-    // Your solution here
-    // Input is provided as a string
-    // Return your result as string
-    
-    return result;
-}
-
-int main() {
-    // Example usage:
-    // printf("%s\\n", solve("2,7,11,15\\n9"));
-    return 0;
-}`
-  };
-
-  useEffect(() => {
-    setCode(languageTemplates[language]);
-  }, [language]);
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -130,6 +72,8 @@ int main() {
     }
 
     setIsSubmitting(true);
+    setSubmissionResult(null);
+    setShowResult(false);
     
     try {
       const submissionData: SubmissionRequest = {
@@ -152,11 +96,24 @@ int main() {
       }
       
       const result: SubmissionResponse = await response.json();
+      
+      // Set the submission result for display
+      setSubmissionResult(result);
+      setShowResult(true);
+      
       onSubmissionCreated(result.submissionId);
     } catch (error) {
       console.error('Submission failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit code';
-      alert(errorMessage);
+      
+      // Show error in the result panel
+      setSubmissionResult({
+        status: 'Error',
+        passed: false,
+        error: errorMessage,
+        testCaseResults: []
+      });
+      setShowResult(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -305,6 +262,82 @@ int main() {
             }}
           />
         </div>
+        
+        {/* Results Panel */}
+        {showResult && submissionResult && (
+          <div className="bg-gray-900 border-t border-gray-700 p-4 max-h-64 overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-white">Submission Results</h3>
+              <button 
+                onClick={() => setShowResult(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Overall Status */}
+            <div className={`mb-4 p-3 rounded-lg border ${
+              submissionResult.passed 
+                ? 'bg-green-900 border-green-700 text-green-300' 
+                : 'bg-red-900 border-red-700 text-red-300'
+            }`}>
+              <div className="flex items-center">
+                <div className={`w-3 h-3 rounded-full mr-2 ${
+                  submissionResult.passed ? 'bg-green-400' : 'bg-red-400'
+                }`}></div>
+                <span className="font-medium">
+                  {submissionResult.status} {submissionResult.passed ? '✓' : '✗'}
+                </span>
+              </div>
+              
+              {/* Show error details if submission failed */}
+              {submissionResult.error && (
+                <div className="mt-2 text-sm">
+                  <strong>Error:</strong> {submissionResult.error}
+                </div>
+              )}
+            </div>
+            
+            {/* Test Case Results */}
+            {submissionResult.testCaseResults && submissionResult.testCaseResults.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-gray-300 mb-2">Test Cases:</h4>
+                {submissionResult.testCaseResults.map((testCase: any, index: number) => (
+                  <div key={index} className={`p-3 rounded border text-sm ${
+                    testCase.passed 
+                      ? 'bg-green-900 border-green-700 text-green-200' 
+                      : 'bg-red-900 border-red-700 text-red-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium">Test Case {index + 1}</span>
+                      <span className={testCase.passed ? 'text-green-400' : 'text-red-400'}>
+                        {testCase.passed ? 'PASS' : 'FAIL'}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-1 text-xs">
+                      <div><strong>Input:</strong> {testCase.input}</div>
+                      <div><strong>Expected:</strong> {testCase.expectedOutput}</div>
+                      <div><strong>Got:</strong> {testCase.actualOutput || 'No output'}</div>
+                      {testCase.status && (
+                        <div><strong>Status:</strong> {testCase.status}</div>
+                      )}
+                      {testCase.error && (
+                        <div className="text-red-400"><strong>Error:</strong> {testCase.error}</div>
+                      )}
+                      {testCase.executionTime && (
+                        <div><strong>Time:</strong> {testCase.executionTime}ms</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
