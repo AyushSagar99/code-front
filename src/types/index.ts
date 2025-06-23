@@ -1,4 +1,4 @@
-// src/types.ts
+// src/index.ts
 
 export interface Problem {
   id: string;
